@@ -2,17 +2,21 @@ import os
 import sys
 import pandas as pd
 
-DATA_PATH = "data/patient_risk.csv"
+DATA_PATH = "data/Titanic-Dataset.csv"
 
 required_columns = [
-    "patient_id",
-    "age",
-    "gender",
-    "blood_pressure",
-    "cholesterol",
-    "diabetes",
-    "risk_score",
-    "timestamp"
+    "PassengerId",
+    "Survived",
+    "Pclass",
+    "Name",
+    "Sex",
+    "Age",
+    "SibSp",
+    "Parch",
+    "Ticket",
+    "Fare",
+    "Cabin",
+    "Embarked"
 ]
 
 def fail(message):
@@ -31,19 +35,41 @@ if missing_columns:
 if df.empty:
     fail("Dataset is empty")
 
-if df.isnull().sum().sum() > 0:
-    fail("Dataset contains missing values")
+if df.shape[0] < 100:
+    fail("Dataset has too few rows")
 
-if not pd.api.types.is_numeric_dtype(df["age"]):
-    fail("age column must be numeric")
+if df.shape[1] < 8:
+    fail("Dataset must contain at least 8 columns")
 
-if not pd.api.types.is_numeric_dtype(df["risk_score"]):
-    fail("risk_score column must be numeric")
+if df["PassengerId"].duplicated().any():
+    fail("PassengerId contains duplicate values")
 
-if (df["age"] < 0).any():
-    fail("age column contains invalid negative values")
+if not df["Survived"].isin([0, 1]).all():
+    fail("Survived column must contain only 0 or 1")
 
-if ((df["risk_score"] < 0) | (df["risk_score"] > 1)).any():
-    fail("risk_score must be between 0 and 1")
+if not df["Pclass"].isin([1, 2, 3]).all():
+    fail("Pclass column must contain only 1, 2, or 3")
+
+if not pd.api.types.is_numeric_dtype(df["Age"]):
+    fail("Age column must be numeric")
+
+if not pd.api.types.is_numeric_dtype(df["Fare"]):
+    fail("Fare column must be numeric")
+
+if (df["Age"].dropna() < 0).any():
+    fail("Age column contains invalid negative values")
+
+if (df["Fare"].dropna() < 0).any():
+    fail("Fare column contains invalid negative values")
+
+if df["Survived"].isnull().sum() > 0:
+    fail("Target column Survived contains missing values")
+
+if df["Sex"].isnull().sum() > 0:
+    fail("Sex column contains missing values")
 
 print("Data validation passed successfully.")
+print("Rows:", df.shape[0])
+print("Columns:", df.shape[1])
+print("Missing values found but allowed in non-critical columns:")
+print(df.isnull().sum())
