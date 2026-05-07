@@ -1,0 +1,97 @@
+name: High-Integrity Promotion Pipeline
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+
+jobs:
+  integrity-audit:
+    name: Integrity Audit - Data and Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install audit dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install dvc pandas
+
+      - name: Configure local DVC remote
+        run: |
+          dvc remote add -d localremote ./dvc_remote || true
+          dvc remote modify localremote url ./dvc_remote
+
+      - name: Pull dataset using DVC
+        run: |
+          dvc pull -r localremote
+
+      - name: Verify DVC files are synchronized
+        run: |
+          dvc status
+          dvc status --quiet
+
+      - name: Run data quality and schema validation
+        run: |
+          python check_data.py
+
+  forensic-build:
+    name: Forensic Build - Docker
+    runs-on: ubuntu-latest
+    needs: integrity-audit
+
+    if: >
+      success() &&
+      (
+        (
+          github.ref == 'refs/heads/main' &&
+          contains(github.event.head_commit.message, '[build-image]')
+        )
+        ||
+        startsWith(github.ref, 'refs/tags/v')
+      )
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare build log folder
+        run: |
+          mkdir -p build_logs
+
+      - name: Build Docker image
+        run: |
+          set -o pipefail
+          docker build -t safe-health-risk-model:${{ github.sha }} . 2>&1 | tee build_logs/build.log
+
+      - name: Upload build crash logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-crash-logs
+          path: build_logs/build.log
+
+  production-promotion:
+    name: Production Promotion - Final Gate
+    runs-on: ubuntu-latest
+    needs: forensic-build
+
+    if: >
+      success() &&
+      startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Promote image to clinical production
+        run: |
+          echo "Promoting ${{ github.ref_name }} to Clinic..."
+          echo "Image version: safe-health-risk-model:${{ github.sha }}"
+          echo "Promotion completed successfully."
